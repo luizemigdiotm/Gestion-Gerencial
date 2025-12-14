@@ -56,6 +56,24 @@ const INITIAL_SHIFT_CONFIG_TEMPLATE: Omit<ShiftConfig, 'managerId'> = {
 };
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
+  // --- Initialization Guard ---
+  if (!supabase) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 text-red-600">
+        <div className="bg-white p-8 rounded shadow-lg max-w-md text-center border border-red-200">
+          <h1 className="text-2xl font-bold mb-4">Error de Configuración</h1>
+          <p className="mb-4">No se ha podido inicializar la conexión con Supabase.</p>
+          <p className="text-sm bg-gray-100 p-3 rounded text-left font-mono">
+            Faltan variables de entorno: <br />
+            VITE_SUPABASE_URL <br />
+            VITE_SUPABASE_ANON_KEY
+          </p>
+          <p className="text-xs text-gray-500 mt-4">Verifica tu archivo .env.local</p>
+        </div>
+      </div>
+    );
+  }
+
   const initialDate = new Date();
   initialDate.setDate(initialDate.getDate() - initialDate.getDay() + 1);
   initialDate.setHours(10, 15, 0, 0);
