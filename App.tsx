@@ -32,17 +32,17 @@ const DebugControls = () => {
             <div className="space-y-2">
                 <div>
                     <label className="block text-gray-400 mb-1">Time Travel:</label>
-                    <input 
-                        type="time" 
-                        value={currentDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})} 
+                    <input
+                        type="time"
+                        value={currentDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                         onChange={handleTimeChange}
                         className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                     />
                 </div>
                 <div>
                     <label className="block text-gray-400 mb-1">Day Travel:</label>
-                    <select 
-                        value={currentDate.getDay()} 
+                    <select
+                        value={currentDate.getDay()}
                         onChange={handleDayChange}
                         className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                     >
@@ -87,7 +87,7 @@ const LoginScreen = () => {
                         {isAdminMode ? 'Acceso Administrativo' : 'Inicia sesión para continuar'}
                     </p>
                 </div>
-                
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -95,7 +95,7 @@ const LoginScreen = () => {
                         </label>
                         <div className="relative">
                             <User className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
+                            <input
                                 type="text"
                                 value={empNum}
                                 onChange={(e) => setEmpNum(e.target.value)}
@@ -109,7 +109,7 @@ const LoginScreen = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
                         <div className="relative">
                             <Key className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
+                            <input
                                 type="password"
                                 value={pass}
                                 onChange={(e) => setPass(e.target.value)}
@@ -119,16 +119,16 @@ const LoginScreen = () => {
                             />
                         </div>
                     </div>
-                    
+
                     {error && <p className="text-sm text-red-500 text-center bg-red-50 p-2 rounded">{error}</p>}
-                    
+
                     <button type="submit" className={`w-full text-white py-2.5 rounded-lg font-medium transition-colors ${isAdminMode ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
                         {isAdminMode ? 'Ingresar como Admin' : 'Ingresar'}
                     </button>
-                    
+
                     <div className="flex justify-center mt-4">
-                        <button 
-                            type="button" 
+                        <button
+                            type="button"
                             onClick={() => { setIsAdminMode(!isAdminMode); setError(''); setEmpNum(''); setPass(''); }}
                             className="text-sm text-gray-500 hover:text-gray-800 underline"
                         >
@@ -176,7 +176,7 @@ const ChangePasswordScreen = () => {
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
-                        <input 
+                        <input
                             type="password"
                             value={newPass}
                             onChange={(e) => setNewPass(e.target.value)}
@@ -186,7 +186,7 @@ const ChangePasswordScreen = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label>
-                        <input 
+                        <input
                             type="password"
                             value={confirmPass}
                             onChange={(e) => setConfirmPass(e.target.value)}
@@ -210,72 +210,72 @@ const ChangePasswordScreen = () => {
 };
 
 const Main = () => {
-  const { currentUser, logout } = useApp();
+    const { currentUser, logout } = useApp();
 
-  // 1. Not Logged In
-  if (!currentUser) {
-    return <LoginScreen />;
-  }
+    // 1. Not Logged In
+    if (!currentUser) {
+        return <LoginScreen />;
+    }
 
-  // 2. First Login (Change Password)
-  if (currentUser.isFirstLogin) {
-    return <ChangePasswordScreen />;
-  }
+    // 2. First Login (Change Password)
+    if (currentUser.isFirstLogin) {
+        return <ChangePasswordScreen />;
+    }
 
-  // 3. Authenticated Dashboard
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4">
-            <div className="flex justify-between h-16">
-                <div className="flex items-center">
-                    <span className="text-xl font-bold text-blue-600">Gestor Banco</span>
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">MVP</span>
-                    {currentUser.role === 'ADMIN' && (
-                        <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                            <Shield size={10} /> ADMIN
-                        </span>
-                    )}
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="text-right hidden md:block">
-                        <p className="text-sm font-medium text-gray-900">
-                            {currentUser.name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            {currentUser.role === 'MANAGER' ? 'Gerente' : currentUser.role === 'ADMIN' ? 'Administrador' : (currentUser as Collaborator).roleTitle}
-                        </p>
+    // 3. Authenticated Dashboard
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <nav className="bg-white border-b border-gray-200 sticky top-0 z-30">
+                <div className="max-w-7xl mx-auto px-4">
+                    <div className="flex justify-between h-16">
+                        <div className="flex items-center">
+                            <span className="text-xl font-bold text-blue-600">Gestor Banco</span>
+                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">MVP</span>
+                            {currentUser.role === 'ADMIN' && (
+                                <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                    <Shield size={10} /> ADMIN
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="text-right hidden md:block">
+                                <p className="text-sm font-medium text-gray-900">
+                                    {currentUser.name}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                    {currentUser.role === 'MANAGER' ? 'Gerente' : currentUser.role === 'ADMIN' ? 'Administrador' : (currentUser as Collaborator).roleTitle}
+                                </p>
+                            </div>
+                            <button
+                                onClick={logout}
+                                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                                title="Cerrar Sesión"
+                            >
+                                <LogOut size={20} />
+                            </button>
+                        </div>
                     </div>
-                    <button 
-                        onClick={logout}
-                        className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Cerrar Sesión"
-                    >
-                        <LogOut size={20} />
-                    </button>
                 </div>
-            </div>
-        </div>
-      </nav>
+            </nav>
 
-      <main>
-        {currentUser.role === 'COLLABORATOR' ? (
-            <CollaboratorDashboard user={currentUser as Collaborator} />
-        ) : (
-            // Manager and Admin share the Dashboard component, logic inside handles permissions
-            <ManagerDashboard />
-        )}
-      </main>
-      
-      <DebugControls />
-    </div>
-  );
+            <main>
+                {currentUser.role === 'COLLABORATOR' ? (
+                    <CollaboratorDashboard user={currentUser as Collaborator} />
+                ) : (
+                    // Manager and Admin share the Dashboard component, logic inside handles permissions
+                    <ManagerDashboard />
+                )}
+            </main>
+
+            <DebugControls />
+        </div>
+    );
 };
 
 export default function App() {
-  return (
-    <AppProvider>
-      <Main />
-    </AppProvider>
-  );
+    return (
+        <AppProvider>
+            <Main />
+        </AppProvider>
+    );
 }

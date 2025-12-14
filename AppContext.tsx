@@ -1,39 +1,39 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
-import { Activity, Collaborator, Manager, Admin, AppState, BranchConfig, ShiftConfig, EmergencyContact, ActivityDefinition } from './types';
-import { MOCK_ACTIVITIES, MOCK_COLLABORATORS, MOCK_MANAGERS, MOCK_ADMINS, MOCK_BRANCH_CONFIGS, MOCK_SHIFT_CONFIGS, MOCK_EMERGENCY_CONTACTS, MOCK_ACTIVITY_DEFINITIONS } from './constants';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect } from 'react';
+import { Activity, Collaborator, Manager, Admin, AppState, BranchConfig, ShiftConfig, EmergencyContact, ActivityDefinition, UserBase } from './types';
+import { supabase } from './supabaseClient';
 
 interface AppContextType extends AppState {
-  login: (employeeNumber: string, password: string) => boolean;
+  login: (employeeNumber: string, password: string) => Promise<boolean>;
   logout: () => void;
-  changePassword: (newPassword: string) => void;
-  
+  changePassword: (newPassword: string) => Promise<void>;
+
   // Activities
-  addActivity: (activity: Omit<Activity, 'id'>) => void;
-  updateActivity: (id: string, updates: Partial<Activity>) => void;
-  deleteActivity: (id: string) => void;
-  
+  addActivity: (activity: Omit<Activity, 'id'>) => Promise<void>;
+  updateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
+  deleteActivity: (id: string) => Promise<void>;
+
   // Simulation
   setSimulatedDate: (date: Date) => void;
 
   // Collaborators Management
-  addCollaborator: (collab: Omit<Collaborator, 'id' | 'avatarInitials' | 'password' | 'isFirstLogin' | 'role'> & {managerId?: number}) => void;
-  updateCollaborator: (id: number, updates: Partial<Collaborator>) => void;
-  deleteCollaborator: (id: number) => void;
+  addCollaborator: (collab: any) => Promise<void>;
+  updateCollaborator: (id: string, updates: Partial<Collaborator>) => Promise<void>;
+  deleteCollaborator: (id: string) => Promise<void>;
 
-  // Managers Management (For Admins)
-  addManager: (manager: Omit<Manager, 'id' | 'isFirstLogin' | 'role' | 'password'>) => void;
-  updateManager: (id: number, updates: Partial<Manager>) => void;
-  deleteManager: (id: number) => void;
+  // Managers Management
+  addManager: (manager: any) => Promise<void>;
+  updateManager: (id: string, updates: Partial<Manager>) => Promise<void>;
+  deleteManager: (id: string) => Promise<void>;
 
-  // Config Management (Now Context Aware)
-  addActivityType: (type: string) => void;
-  deleteActivityType: (type: string) => void;
-  updateBranchConfig: (config: BranchConfig) => void;
-  updateShiftConfig: (config: ShiftConfig) => void;
-  
+  // Config Management
+  addActivityType: (type: string) => Promise<void>;
+  deleteActivityType: (type: string) => Promise<void>;
+  updateBranchConfig: (config: BranchConfig) => Promise<void>;
+  updateShiftConfig: (config: ShiftConfig) => Promise<void>;
+
   // Emergency Contacts
-  addEmergencyContact: (name: string, phone: string) => void;
-  deleteEmergencyContact: (id: string) => void;
+  addEmergencyContact: (name: string, phone: string) => Promise<void>;
+  deleteEmergencyContact: (id: string) => Promise<void>;
 
   // Data Getters (Filtered)
   getVisibleCollaborators: () => Collaborator[];
@@ -42,321 +42,475 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Default configs for new managers or fallbacks
-const INITIAL_BRANCH_CONFIG_TEMPLATE = {
-    name: "Nueva Sucursal",
-    ceco: "MX-00000",
-    region: "Sin Asignar",
-    territory: "Sin Asignar"
+// Defaults
+const INITIAL_BRANCH_CONFIG_TEMPLATE: Omit<BranchConfig, 'managerId'> = {
+  name: "Nueva Sucursal",
+  ceco: "MX-00000",
+  region: "Sin Asignar",
+  territory: "Sin Asignar"
 };
 
-const INITIAL_SHIFT_CONFIG_TEMPLATE = {
-    MATUTINO: { start: "08:00", end: "15:00" },
-    VESPERTINO: { start: "12:00", end: "20:00" }
+const INITIAL_SHIFT_CONFIG_TEMPLATE: Omit<ShiftConfig, 'managerId'> = {
+  MATUTINO: { start: "08:00", end: "15:00" },
+  VESPERTINO: { start: "12:00", end: "20:00" }
 };
-
-const INITIAL_ACTIVITIES_TEMPLATE = [
-  "Apertura de Caja", "Cierre de Caja", "Atención a Clientes", "Hora de Comida"
-];
 
 export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const initialDate = new Date();
-  initialDate.setDate(initialDate.getDate() - initialDate.getDay() + 1); 
+  initialDate.setDate(initialDate.getDate() - initialDate.getDay() + 1);
   initialDate.setHours(10, 15, 0, 0);
 
-  // Database State (Mocking Supabase Tables)
-  const [activities, setActivities] = useState<Activity[]>(MOCK_ACTIVITIES);
-  const [collaborators, setCollaborators] = useState<Collaborator[]>(MOCK_COLLABORATORS);
-  const [managers, setManagers] = useState<Manager[]>(MOCK_MANAGERS);
-  const [admins, setAdmins] = useState<Admin[]>(MOCK_ADMINS);
-  
-  // Configuration State (Now Global Arrays keyed by ManagerID)
-  const [allActivityDefinitions, setAllActivityDefinitions] = useState<ActivityDefinition[]>(MOCK_ACTIVITY_DEFINITIONS);
-  const [allBranchConfigs, setAllBranchConfigs] = useState<BranchConfig[]>(MOCK_BRANCH_CONFIGS);
-  const [allShiftConfigs, setAllShiftConfigs] = useState<ShiftConfig[]>(MOCK_SHIFT_CONFIGS);
-  const [allEmergencyContacts, setAllEmergencyContacts] = useState<EmergencyContact[]>(MOCK_EMERGENCY_CONTACTS);
+  // --- Global State ---
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [admins, setAdmins] = useState<Admin[]>([]);
+
+  const [allActivityDefinitions, setAllActivityDefinitions] = useState<ActivityDefinition[]>([]);
+  const [allBranchConfigs, setAllBranchConfigs] = useState<BranchConfig[]>([]);
+  const [allShiftConfigs, setAllShiftConfigs] = useState<ShiftConfig[]>([]);
+  const [allEmergencyContacts, setAllEmergencyContacts] = useState<EmergencyContact[]>([]);
 
   const [currentUser, setCurrentUser] = useState<Collaborator | Manager | Admin | null>(null);
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
 
-  // --- Auth ---
-  const login = (employeeNumber: string, pass: string): boolean => {
-    // 0. Check Admins
-    const admin = admins.find(a => a.employeeNumber === employeeNumber && a.password === pass);
-    if (admin) {
-        setCurrentUser(admin);
-        return true;
+  // --- Auth & Initial Fetch ---
+  useEffect(() => {
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setCurrentUser(null);
+        // Clear Data
+        setActivities([]);
+        setCollaborators([]);
+        setManagers([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (data && !error) {
+      // Map DB snake_case to app camelCase
+      const user: any = {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        employeeNumber: data.employee_number,
+        role: data.role,
+        isFirstLogin: false, // Manage differently in DB if needed
+      };
+
+      if (data.role === 'COLLABORATOR') {
+        user.roleTitle = data.role_title;
+        user.shift = data.shift;
+        user.avatarInitials = data.avatar_initials;
+        user.managerId = data.manager_id;
+      }
+
+      setCurrentUser(user);
+      fetchAppData(user);
     }
-    // 1. Check Managers
-    const manager = managers.find(m => m.employeeNumber === employeeNumber && m.password === pass);
-    if (manager) {
-      setCurrentUser(manager);
-      return true;
-    }
-    // 2. Check Collaborators
-    const collab = collaborators.find(c => c.employeeNumber === employeeNumber && c.password === pass);
-    if (collab) {
-      setCurrentUser(collab);
-      return true;
-    }
-    return false;
   };
 
-  const logout = () => setCurrentUser(null);
+  const fetchAppData = async (user: UserBase) => {
+    // Logic to fetch data based on Role
+    // 1. Fetch Configs & Definitions (Usually Manager Scope)
 
-  const changePassword = (newPassword: string) => {
-    if (!currentUser) return;
-    
-    if (currentUser.role === 'ADMIN') {
-        setAdmins(prev => prev.map(a => a.id === currentUser.id ? { ...a, password: newPassword, isFirstLogin: false } : a));
-        setCurrentUser(prev => prev ? ({ ...prev, password: newPassword, isFirstLogin: false } as Admin) : null);
-    } else if (currentUser.role === 'MANAGER') {
-        setManagers(prev => prev.map(m => m.id === currentUser.id ? { ...m, password: newPassword, isFirstLogin: false } : m));
-        setCurrentUser(prev => prev ? ({ ...prev, password: newPassword, isFirstLogin: false } as Manager) : null);
-    } else {
-        setCollaborators(prev => prev.map(c => c.id === currentUser.id ? { ...c, password: newPassword, isFirstLogin: false } : c));
-        setCurrentUser(prev => prev ? ({ ...prev, password: newPassword, isFirstLogin: false } as Collaborator) : null);
+    let managerIdsToFetch: string[] = [];
+
+    if (user.role === 'MANAGER') {
+      managerIdsToFetch = [user.id];
+    } else if (user.role === 'COLLABORATOR') {
+      managerIdsToFetch = [(user as Collaborator).managerId];
+    } else if (user.role === 'ADMIN') {
+      const { data: allManagers } = await supabase.from('profiles').select('*').eq('role', 'MANAGER');
+      if (allManagers) managerIdsToFetch = allManagers.map(m => m.id);
+    }
+
+    // Fetch Related Data
+    if (managerIdsToFetch.length > 0) {
+      // Activities Definitions
+      const { data: actDefs } = await supabase.from('activity_definitions').select('*').in('manager_id', managerIdsToFetch);
+      if (actDefs) setAllActivityDefinitions(actDefs.map(d => ({ ...d, managerId: d.manager_id })));
+
+      // Branch Configs
+      const { data: bConfigs } = await supabase.from('branch_configs').select('*').in('manager_id', managerIdsToFetch);
+      if (bConfigs) setAllBranchConfigs(bConfigs.map(c => ({ ...c, managerId: c.manager_id })));
+
+      // Shift Configs
+      const { data: sConfigs } = await supabase.from('shift_configs').select('*').in('manager_id', managerIdsToFetch);
+      // Need to map flat DB columns to MATUTINO/VESPERTINO objects
+      if (sConfigs) {
+        const mappedConfigs = sConfigs.map(c => ({
+          id: c.id,
+          managerId: c.manager_id,
+          MATUTINO: { start: c.matutino_start, end: c.matutino_end },
+          VESPERTINO: { start: c.vespertino_start, end: c.vespertino_end },
+        }));
+        setAllShiftConfigs(mappedConfigs);
+      }
+
+      // Emergency Contacts
+      const { data: eContacts } = await supabase.from('emergency_contacts').select('*').in('manager_id', managerIdsToFetch);
+      if (eContacts) setAllEmergencyContacts(eContacts.map(c => ({ ...c, managerId: c.manager_id })));
+
+      // Fetch Collaborators
+      const { data: collabs } = await supabase.from('profiles').select('*').eq('role', 'COLLABORATOR').in('manager_id', managerIdsToFetch);
+      if (collabs) {
+        setCollaborators(collabs.map(c => ({
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          employeeNumber: c.employee_number,
+          role: 'COLLABORATOR',
+          roleTitle: c.role_title,
+          shift: c.shift,
+          avatarInitials: c.avatar_initials,
+          managerId: c.manager_id,
+        })));
+      }
+
+      // Fetch Activities for these collaborators
+      const { data: acts } = await supabase.from('activities').select('*'); // If RLS is on, this is safe. Or filter by collaborator IDs.
+      if (acts) {
+        const mappedActs = acts.map(a => ({
+          id: a.id,
+          collaboratorId: a.collaborator_id,
+          day: a.day_of_week as any,
+          time: a.time_start.substring(0, 5), // HH:mm:ss -> HH:mm
+          endTime: a.time_end.substring(0, 5),
+          description: a.description,
+          completed: a.is_completed,
+          completedAt: a.completed_at ? new Date(a.completed_at) : undefined,
+          type: 'default' // Add type column if needed in DB
+        }));
+        setActivities(mappedActs);
+      }
     }
   };
+
+
+  // --- Auth Actions ---
+  const login = async (employeeNumber: string, pass: string): Promise<boolean> => {
+    // NOTE: Supabase Login uses EMAIL, but user has Employee Number.
+    // Trick: If we want to login with EmployeeNumber, we need a way to map it to Email first 
+    // OR (easier for MVP) assume 'employeeNumber' input IS the email for now, OR fetch email by empNum via Edge Function (Admin).
+    // FOR THIS MVP: We will try to sign in using the INPUT as Email. User must enter Email.
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: employeeNumber, // Using input field as Email
+      password: pass,
+    });
+
+    if (error) {
+      console.error("Login Error", error);
+      return false;
+    }
+    return true;
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const changePassword = async (newPassword: string) => {
+    await supabase.auth.updateUser({ password: newPassword });
+  };
+
 
   // --- Helper to get Context ID ---
-  // Returns the Manager ID that owns the configuration we should be looking at
-  const getContextManagerId = (): number => {
-      if (!currentUser) return 0; // Default fallback
-      if (currentUser.role === 'MANAGER') return currentUser.id;
-      if (currentUser.role === 'COLLABORATOR') return (currentUser as Collaborator).managerId;
-      
-      // If Admin, use first available manager or 0 if none exist
-      if (currentUser.role === 'ADMIN') {
-          return managers.length > 0 ? managers[0].id : 0;
-      }
-      return 0;
+  const getContextManagerId = (): string => {
+    if (!currentUser) return '';
+    if (currentUser.role === 'MANAGER') return currentUser.id;
+    if (currentUser.role === 'COLLABORATOR') return (currentUser as Collaborator).managerId;
+    if (currentUser.role === 'ADMIN') {
+      // Mock: use first manager found
+      return ''; // TODO: Admin selector logic
+    }
+    return '';
   };
 
-  // --- Computed Configs based on Context ---
   const contextManagerId = getContextManagerId();
 
+  // --- Computed Configs ---
   const branchConfig = useMemo(() => {
-     return allBranchConfigs.find(c => c.managerId === contextManagerId) || { ...INITIAL_BRANCH_CONFIG_TEMPLATE, managerId: contextManagerId };
+    return allBranchConfigs.find(c => c.managerId === contextManagerId) || { ...INITIAL_BRANCH_CONFIG_TEMPLATE, managerId: contextManagerId };
   }, [allBranchConfigs, contextManagerId]);
 
   const shiftConfig = useMemo(() => {
-      return allShiftConfigs.find(c => c.managerId === contextManagerId) || { ...INITIAL_SHIFT_CONFIG_TEMPLATE, managerId: contextManagerId };
+    return allShiftConfigs.find(c => c.managerId === contextManagerId) || { ...INITIAL_SHIFT_CONFIG_TEMPLATE, managerId: contextManagerId };
   }, [allShiftConfigs, contextManagerId]);
 
   const activityTypes = useMemo(() => {
-      return allActivityDefinitions.filter(a => a.managerId === contextManagerId).map(a => a.name);
+    return allActivityDefinitions.filter(a => a.managerId === contextManagerId).map(a => a.name);
   }, [allActivityDefinitions, contextManagerId]);
 
   const emergencyContacts = useMemo(() => {
-      return allEmergencyContacts.filter(c => c.managerId === contextManagerId);
+    return allEmergencyContacts.filter(c => c.managerId === contextManagerId);
   }, [allEmergencyContacts, contextManagerId]);
 
-  // --- Data Security / Filtering ---
+
+  // --- Getters ---
   const getVisibleCollaborators = (): Collaborator[] => {
     if (!currentUser) return [];
-    
-    if (currentUser.role === 'ADMIN') {
-        return collaborators;
-    } else if (currentUser.role === 'MANAGER') {
-        return collaborators.filter(c => c.managerId === currentUser.id);
-    } else {
-        const currentManagerId = (currentUser as Collaborator).managerId;
-        return collaborators.filter(c => c.managerId === currentManagerId);
-    }
+    if (currentUser.role === 'MANAGER') return collaborators.filter(c => c.managerId === currentUser.id);
+    if (currentUser.role === 'COLLABORATOR') return collaborators.filter(c => c.managerId === (currentUser as Collaborator).managerId);
+    return collaborators;
   };
 
   const getVisibleActivities = (): Activity[] => {
-    if (currentUser?.role === 'ADMIN') return activities;
-
-    const visibleCollabs = getVisibleCollaborators();
-    const visibleIds = visibleCollabs.map(c => c.id);
-    if (currentUser?.role === 'COLLABORATOR') visibleIds.push(currentUser.id);
-    
-    return activities.filter(a => visibleIds.includes(a.collaboratorId));
+    // Already filtered by fetch logic mostly, but safe to filter again
+    const visibleCollabs = getVisibleCollaborators().map(c => c.id);
+    if (currentUser?.role === 'COLLABORATOR') visibleCollabs.push(currentUser.id);
+    return activities.filter(a => visibleCollabs.includes(a.collaboratorId));
   };
 
 
-  // --- Activities ---
-  const addActivity = (data: Omit<Activity, 'id'>) => {
-    const newActivity: Activity = {
-      ...data,
-      id: Math.random().toString(36).substr(2, 9),
-      completed: false
-    };
-    setActivities(prev => [...prev, newActivity]);
+  // --- Actions ---
+  // Note: These now need to be Async to update DB, but state update is Optimistic or re-fetch
+
+  const addActivity = async (data: Omit<Activity, 'id'>) => {
+    // DB Insert
+    const { data: inserted, error } = await supabase.from('activities').insert({
+      collaborator_id: data.collaboratorId,
+      day_of_week: data.day,
+      time_start: data.time,
+      time_end: data.endTime,
+      description: data.description,
+      is_completed: false
+    }).select().single();
+
+    if (inserted && !error) {
+      // Update Local State
+      const newAct: Activity = {
+        id: inserted.id,
+        collaboratorId: inserted.collaborator_id,
+        day: inserted.day_of_week,
+        time: inserted.time_start.slice(0, 5),
+        endTime: inserted.time_end.slice(0, 5),
+        description: inserted.description,
+        completed: inserted.is_completed,
+        type: 'default'
+      };
+      setActivities(prev => [...prev, newAct]);
+    }
   };
 
-  const updateActivity = (id: string, updates: Partial<Activity>) => {
-    setActivities(prev => prev.map(act => {
-      if (act.id === id) {
-        if (updates.completed === true && !act.completed) {
-          return { ...act, ...updates, completedAt: currentDate };
-        }
-        return { ...act, ...updates };
-      }
-      return act;
-    }));
+  const updateActivity = async (id: string, updates: Partial<Activity>) => {
+    // Prepare DB updates
+    const dbUpdates: any = {};
+    if (updates.completed !== undefined) {
+      dbUpdates.is_completed = updates.completed;
+      if (updates.completed) dbUpdates.completed_at = new Date(); // Should match server time ideally
+    }
+
+    if (Object.keys(dbUpdates).length > 0) {
+      await supabase.from('activities').update(dbUpdates).eq('id', id);
+
+      // Optimistic Update
+      setActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    }
   };
 
-  const deleteActivity = (id: string) => {
+  const deleteActivity = async (id: string) => {
+    await supabase.from('activities').delete().eq('id', id);
     setActivities(prev => prev.filter(a => a.id !== id));
   };
 
-  // --- Managers (Admin Only) ---
-  const addManager = (data: Omit<Manager, 'id' | 'isFirstLogin' | 'role' | 'password'>) => {
-    if (!currentUser || currentUser.role !== 'ADMIN') return;
+  // --- Placeholders for other actions (User management) ---
+  // --- User Management (Profiles) ---
+  // Note: Creating a user profile requires an existing Auth User (UUID).
+  // For this MVP, we assume the Auth User is created manually or via a separate Admin flow.
+  // These functions facilitate managing the Profile data once the ID is known or if we are just updating.
 
-    const newId = Math.max(...managers.map(m => m.id), 900) + 1; 
-    const newManager: Manager = {
-        id: newId,
-        password: data.employeeNumber, 
-        isFirstLogin: true,
-        role: 'MANAGER',
-        ...data
-    };
-    setManagers(prev => [...prev, newManager]);
+  const addCollaborator = async (collab: any) => {
+    // In a real app, this would use a Server Action to create Auth User + Profile.
+    // Here we can only insert the profile if we have the ID. 
+    // Since we don't have the ID from the UI (yet), this is limited.
+    // OPTION: We could generate a dummy profile for visualization if not linked to Auth yet,
+    // but 'profiles' is strictly linked to Auth.
 
-    // Initialize Default Configs for this new Manager
-    setAllBranchConfigs(prev => [...prev, { ...INITIAL_BRANCH_CONFIG_TEMPLATE, managerId: newId }]);
-    setAllShiftConfigs(prev => [...prev, { ...INITIAL_SHIFT_CONFIG_TEMPLATE, managerId: newId }]);
-    
-    const newActivities = INITIAL_ACTIVITIES_TEMPLATE.map((name, idx) => ({
-        id: `def-${newId}-${idx}`,
-        name,
-        managerId: newId
-    }));
-    setAllActivityDefinitions(prev => [...prev, ...newActivities]);
+    alert("Para agregar un colaborador, primero crea el usuario en 'Authentication' de Supabase. Luego, agrega manualmente el registro en la tabla 'public.profiles' con el Rol 'COLLABORATOR'.");
+    console.warn("Feature requiring Admin API: addCollaborator");
   };
 
-  const updateManager = (id: number, updates: Partial<Manager>) => {
-    if (!currentUser || currentUser.role !== 'ADMIN') return;
-    setManagers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  const updateCollaborator = async (id: string, updates: Partial<Collaborator>) => {
+    // Map to snake_case
+    const dbUpdates: any = {};
+    if (updates.name) dbUpdates.name = updates.name;
+    if (updates.employeeNumber) dbUpdates.employee_number = updates.employeeNumber;
+    if (updates.roleTitle) dbUpdates.role_title = updates.roleTitle;
+    if (updates.shift) dbUpdates.shift = updates.shift;
+
+    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', id);
+
+    if (!error) {
+      setCollaborators(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    }
   };
 
-  const deleteManager = (id: number) => {
-      if (!currentUser || currentUser.role !== 'ADMIN') return;
+  const deleteCollaborator = async (id: string) => {
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (!error) {
+      setCollaborators(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
+  const addManager = async (manager: any) => {
+    alert("Para agregar un gerente, crea el usuario en Supabase Auth y luego inserta en 'public.profiles' con Rol 'MANAGER'.");
+  };
+
+  const updateManager = async (id: string, updates: Partial<Manager>) => {
+    const dbUpdates: any = {};
+    if (updates.name) dbUpdates.name = updates.name;
+    if (updates.employeeNumber) dbUpdates.employee_number = updates.employeeNumber;
+
+    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', id);
+    if (!error) {
+      setManagers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    }
+  };
+
+  const deleteManager = async (id: string) => {
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (!error) {
       setManagers(prev => prev.filter(m => m.id !== id));
-      // Cleanup configs
-      setAllBranchConfigs(prev => prev.filter(c => c.managerId !== id));
-      setAllShiftConfigs(prev => prev.filter(c => c.managerId !== id));
-      setAllActivityDefinitions(prev => prev.filter(c => c.managerId !== id));
-      setAllEmergencyContacts(prev => prev.filter(c => c.managerId !== id));
-  };
-
-
-  // --- Collaborators ---
-  const addCollaborator = (data: Omit<Collaborator, 'id' | 'avatarInitials' | 'password' | 'isFirstLogin' | 'role'> & {managerId?: number}) => {
-    if (!currentUser) return;
-    
-    let assignedManagerId = currentUser.id;
-    if (currentUser.role === 'ADMIN') {
-        if (!data.managerId) {
-            console.error("Admin must provide managerId");
-            return;
-        }
-        assignedManagerId = data.managerId;
-    }
-
-    const newId = Math.max(...collaborators.map(c => c.id), 0) + 1;
-    const initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    
-    const newCollab: Collaborator = {
-      id: newId,
-      avatarInitials: initials,
-      password: "123",
-      isFirstLogin: true,
-      role: 'COLLABORATOR',
-      managerId: assignedManagerId,
-      name: data.name,
-      employeeNumber: data.employeeNumber,
-      roleTitle: data.roleTitle,
-      shift: data.shift
-    };
-    setCollaborators(prev => [...prev, newCollab]);
-  };
-
-  const updateCollaborator = (id: number, updates: Partial<Collaborator>) => {
-    setCollaborators(prev => prev.map(c => {
-      if (c.id === id) {
-        const updated = { ...c, ...updates };
-        if (updates.name) {
-             updated.avatarInitials = updates.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        }
-        return updated;
-      }
-      return c;
-    }));
-  };
-
-  const deleteCollaborator = (id: number) => {
-    setCollaborators(prev => prev.filter(c => c.id !== id));
-    setActivities(prev => prev.filter(a => a.collaboratorId !== id));
-  };
-
-  // --- Config Management (Scoped by Manager) ---
-  const addActivityType = (type: string) => {
-    if (!contextManagerId) return;
-    // Check duplicate for this manager
-    const exists = allActivityDefinitions.some(a => a.managerId === contextManagerId && a.name === type);
-    if (!exists) {
-        setAllActivityDefinitions(prev => [...prev, {
-            id: Math.random().toString(36).substr(2, 9),
-            name: type,
-            managerId: contextManagerId
-        }]);
     }
   };
 
-  const deleteActivityType = (type: string) => {
+
+  // --- Config Management ---
+
+  const addActivityType = async (type: string) => {
     if (!contextManagerId) return;
-    setAllActivityDefinitions(prev => prev.filter(a => !(a.managerId === contextManagerId && a.name === type)));
+    const { data, error } = await supabase.from('activity_definitions').insert({
+      manager_id: contextManagerId,
+      name: type
+    }).select().single();
+
+    if (data && !error) {
+      setAllActivityDefinitions(prev => [...prev, { id: data.id, manager_id: data.manager_id, name: data.name, managerId: data.manager_id } as any]);
+    }
   };
 
-  const updateBranchConfig = (config: BranchConfig) => {
+  const deleteActivityType = async (type: string) => {
     if (!contextManagerId) return;
-    setAllBranchConfigs(prev => {
-        const others = prev.filter(c => c.managerId !== contextManagerId);
-        return [...others, { ...config, managerId: contextManagerId }];
+    const { error } = await supabase.from('activity_definitions').delete().match({
+      manager_id: contextManagerId,
+      name: type
     });
+
+    if (!error) {
+      setAllActivityDefinitions(prev => prev.filter(a => !(a.managerId === contextManagerId && a.name === type)));
+    }
   };
 
-  const updateShiftConfig = (config: ShiftConfig) => {
+  const updateBranchConfig = async (config: BranchConfig) => {
     if (!contextManagerId) return;
-    setAllShiftConfigs(prev => {
-        const others = prev.filter(c => c.managerId !== contextManagerId);
-        return [...others, { ...config, managerId: contextManagerId }];
-    });
+
+    const { data, error } = await supabase.from('branch_configs').upsert({
+      manager_id: contextManagerId,
+      name: config.name,
+      ceco: config.ceco,
+      region: config.region,
+      territory: config.territory
+    }, { onConflict: 'manager_id' }).select();
+
+    if (!error && data) {
+      // We need to update AllBranchConfigs or force fetch
+      setAllBranchConfigs(prev => {
+        const idx = prev.findIndex(c => c.managerId === contextManagerId);
+        const newConfig = { ...config, managerId: contextManagerId };
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = newConfig;
+          return copy;
+        }
+        return [...prev, newConfig];
+      });
+    }
   };
 
-  const addEmergencyContact = (name: string, phone: string) => {
+  const updateShiftConfig = async (config: ShiftConfig) => {
     if (!contextManagerId) return;
-    const newContact: EmergencyContact = {
-        id: Math.random().toString(36).substr(2, 9),
-        name,
-        phone,
-        managerId: contextManagerId
-    };
-    setAllEmergencyContacts(prev => [...prev, newContact]);
+
+    const { error } = await supabase.from('shift_configs').upsert({
+      manager_id: contextManagerId,
+      matutino_start: config.MATUTINO.start,
+      matutino_end: config.MATUTINO.end,
+      vespertino_start: config.VESPERTINO.start,
+      vespertino_end: config.VESPERTINO.end
+    }, { onConflict: 'manager_id' });
+
+    if (!error) {
+      setAllShiftConfigs(prev => {
+        const idx = prev.findIndex(c => c.managerId === contextManagerId);
+        const newConf = { ...config, managerId: contextManagerId, id: 'temp' }; // id not critical for local logic
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = newConf;
+          return copy;
+        }
+        return [...prev, newConf];
+      });
+    }
   };
 
-  const deleteEmergencyContact = (id: string) => {
-    setAllEmergencyContacts(prev => prev.filter(c => c.id !== id));
+  const addEmergencyContact = async (name: string, phone: string) => {
+    if (!contextManagerId) return;
+    const { data, error } = await supabase.from('emergency_contacts').insert({
+      manager_id: contextManagerId,
+      name,
+      phone
+    }).select().single();
+
+    if (data && !error) {
+      setAllEmergencyContacts(prev => [...prev, {
+        id: data.id,
+        managerId: data.manager_id,
+        name: data.name,
+        phone: data.phone
+      }]);
+    }
   };
+
+  const deleteEmergencyContact = async (id: string) => {
+    const { error } = await supabase.from('emergency_contacts').delete().eq('id', id);
+    if (!error) {
+      setAllEmergencyContacts(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
 
   return (
     <AppContext.Provider value={{
-      activities: getVisibleActivities(), 
+      activities: getVisibleActivities(),
       collaborators: getVisibleCollaborators(),
       managers,
       admins,
-      activityTypes, // Computed for current context
+      activityTypes,
       currentUser,
       currentDate,
-      branchConfig, // Computed for current context
-      shiftConfig, // Computed for current context
-      emergencyContacts, // Computed for current context
-      login,
+      branchConfig,
+      shiftConfig,
+      emergencyContacts,
+      login, // Now returns Promise<boolean> and takes Email
       logout,
       changePassword,
       addActivity,

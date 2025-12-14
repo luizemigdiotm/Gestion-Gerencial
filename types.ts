@@ -3,11 +3,12 @@ export type ShiftType = 'MATUTINO' | 'VESPERTINO';
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday, 1 = Monday...
 
 export interface UserBase {
-  id: number;
+  id: string; // UUID from Supabase
   name: string;
-  employeeNumber: string; // Used for Login
-  password?: string; // Should be hashed in real DB
-  isFirstLogin: boolean;
+  email: string;
+  employeeNumber: string;
+  // password is removed as it is handled by Supabase Auth
+  isFirstLogin?: boolean; // Can use 'last_sign_in_at' or similar from Supabase logic if needed, keeping optional
   role: Role;
 }
 
@@ -16,7 +17,7 @@ export interface Collaborator extends UserBase {
   roleTitle: string;
   shift: ShiftType;
   avatarInitials: string;
-  managerId: number; // Foreign Key to Manager
+  managerId: string; // UUID
 }
 
 export interface Manager extends UserBase {
@@ -28,25 +29,26 @@ export interface Admin extends UserBase {
 }
 
 export interface Activity {
-  id: string;
-  collaboratorId: number;
+  id: string; // UUID
+  collaboratorId: string; // UUID
   day: DayOfWeek;
-  time: string;
-  endTime: string;
+  time: string; // Time string HH:mm
+  endTime: string; // Time string HH:mm
   description: string;
   completed: boolean;
   completedAt?: Date;
-  type?: string; 
+  type?: string;
 }
 
 export interface ActivityDefinition {
-    id: string;
-    name: string;
-    managerId: number;
+  id: string; // BigInt loaded as string or UUID if we changed it, keeping string for safety
+  name: string;
+  managerId: string; // UUID
 }
 
 export interface BranchConfig {
-  managerId: number; // Config belongs to a specific manager
+  id?: string; // DB ID
+  managerId: string; // UUID
   name: string;
   ceco: string;
   region: string;
@@ -59,27 +61,28 @@ export interface ShiftSchedule {
 }
 
 export interface ShiftConfig {
-  managerId: number;
+  id?: string;
+  managerId: string; // UUID
   MATUTINO: ShiftSchedule;
   VESPERTINO: ShiftSchedule;
 }
 
 export interface EmergencyContact {
   id: string;
-  managerId: number;
+  managerId: string; // UUID
   name: string;
   phone: string;
 }
 
 export interface AppState {
   activities: Activity[];
-  collaborators: Collaborator[]; 
-  managers: Manager[]; 
+  collaborators: Collaborator[];
+  managers: Manager[];
   admins: Admin[];
-  activityTypes: string[]; // Computed based on context
+  activityTypes: string[];
   currentUser: Collaborator | Manager | Admin | null;
   currentDate: Date;
-  branchConfig: BranchConfig; // Computed based on context
-  shiftConfig: ShiftConfig; // Computed based on context
-  emergencyContacts: EmergencyContact[]; // Computed based on context
+  branchConfig: BranchConfig;
+  shiftConfig: ShiftConfig;
+  emergencyContacts: EmergencyContact[];
 }
